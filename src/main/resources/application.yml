@@ -1,0 +1,27 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: jdbc:h2:file:./data/xhs-ai;MODE=MySQL;DATABASE_TO_LOWER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+app:
+  jwt-secret: ${JWT_SECRET}
+  jwt-expire-hours: 24
+  cookie-secret: ${COOKIE_SECRET}
+  feishu:
+    base-url: "https://jfsq6znqku.feishu.cn/base/GPSJbMfYzaty1Hs4yDCceDndnng?table=tblS8DhnLf3hfdTG&view=vewkmpmalY"
