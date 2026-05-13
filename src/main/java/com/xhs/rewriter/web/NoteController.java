@@ -16,10 +16,13 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
 @RestController
 @RequestMapping("/api/notes")
 public class NoteController {
+    private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
     private final NoteRepository noteRepository;
     private final UserAccountRepository userRepository;
     private final AiRewriteService aiRewriteService;
@@ -52,6 +55,11 @@ public class NoteController {
         note.setOriginalContent(requireText(request.getOriginalContent(), "正文不能为空"));
         note.setNoteUrl(request.getNoteUrl() == null || request.getNoteUrl().trim().isEmpty() ? "manual://" + System.currentTimeMillis() : request.getNoteUrl().trim());
         note.setRemark(request.getRemark());
+        note.setFetchedAt(LocalDateTime.now().format(DATE_TIME_FORMATTER));
+        note.setAuthorName("手动录入");
+        note.setAuthorSignature("无");
+        note.setPublishTime(note.getFetchedAt());
+        note.setLastUpdateTime(note.getFetchedAt());
         note.setImageUrlsJson("[]");
         note.setTagsJson("[]");
         return noteRepository.save(note);

@@ -33,13 +33,24 @@ public class Note {
 
     private Integer commentCount = 0;
 
+    private Integer shareCount = 0;
+
     private Integer interactionScore = 0;
 
     @Column(length = 64)
     private String authorName;
 
+    @Column(length = 512)
+    private String authorSignature = "无";
+
     @Column(length = 128)
     private String publishTime;
+
+    @Column(length = 128)
+    private String lastUpdateTime;
+
+    @Column(length = 128)
+    private String fetchedAt;
 
     @Lob
     private String tagsJson;

@@ -20,8 +20,12 @@ spring:
         format_sql: true
 
 app:
-  jwt-secret: ${JWT_SECRET}
+  jwt-secret: ${JWT_SECRET:xhs-local-dev-jwt-secret-at-least-32-bytes-2026}
   jwt-expire-hours: 24
-  cookie-secret: ${COOKIE_SECRET}
+  cookie-secret: ${COOKIE_SECRET:xhs-local-dev-cookie-secret-at-least-32-bytes}
   feishu:
     base-url: "https://jfsq6znqku.feishu.cn/base/GPSJbMfYzaty1Hs4yDCceDndnng?table=tblS8DhnLf3hfdTG&view=vewkmpmalY"
+  deepseek:
+    api-key: ${DEEPSEEK_API_KEY:}
+    base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com/chat/completions}
+    model: ${DEEPSEEK_MODEL:deepseek-chat}
