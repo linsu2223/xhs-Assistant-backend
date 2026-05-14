@@ -1,0 +1,42 @@
+CREATE TABLE IF NOT EXISTS user_account (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(64) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    display_name VARCHAR(64) NOT NULL,
+    phone VARCHAR(64),
+    email VARCHAR(128),
+    avatar_url VARCHAR(512),
+    encrypted_cookie LONGTEXT,
+    cookie_status VARCHAR(32) DEFAULT '未配置',
+    cookie_updated_at DATETIME NULL,
+    today_usage INT DEFAULT 0,
+    month_usage INT DEFAULT 0,
+    failed_login_count INT DEFAULT 0,
+    locked_until DATETIME NULL,
+    created_at DATETIME NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS note (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    title VARCHAR(120) NOT NULL,
+    note_url VARCHAR(512),
+    original_content LONGTEXT NOT NULL,
+    image_urls_json LONGTEXT,
+    like_count INT DEFAULT 0,
+    collect_count INT DEFAULT 0,
+    comment_count INT DEFAULT 0,
+    share_count INT DEFAULT 0,
+    interaction_score INT DEFAULT 0,
+    author_name VARCHAR(64),
+    author_signature VARCHAR(512),
+    publish_time VARCHAR(128),
+    last_update_time VARCHAR(128),
+    fetched_at VARCHAR(128),
+    tags_json LONGTEXT,
+    analysis_json LONGTEXT,
+    rewrite_results_json LONGTEXT,
+    potential_label VARCHAR(32) DEFAULT '待分析',
+    remark VARCHAR(255),
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL
+);
