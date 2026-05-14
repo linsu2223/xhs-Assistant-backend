@@ -1,7 +1,7 @@
 package com.xhs.rewriter.service;
 
 import com.xhs.rewriter.domain.UserAccount;
-import com.xhs.rewriter.repository.UserAccountRepository;
+import com.xhs.rewriter.mapper.UserAccountMapper;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -12,16 +12,18 @@ import java.util.Collections;
 
 @Service
 public class UserAccountDetailsService implements UserDetailsService {
-    private final UserAccountRepository userRepository;
+    private final UserAccountMapper userMapper;
 
-    public UserAccountDetailsService(UserAccountRepository userRepository) {
-        this.userRepository = userRepository;
+    public UserAccountDetailsService(UserAccountMapper userMapper) {
+        this.userMapper = userMapper;
     }
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        UserAccount account = userRepository.findByUsername(username)
-                .orElseThrow(() -> new UsernameNotFoundException("用户不存在"));
+        UserAccount account = userMapper.findByUsername(username);
+        if (account == null) {
+            throw new UsernameNotFoundException("用户不存在");
+        }
         return new User(account.getUsername(), account.getPassword(), Collections.emptyList());
     }
 }

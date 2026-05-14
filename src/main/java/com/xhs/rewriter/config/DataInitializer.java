@@ -2,8 +2,8 @@ package com.xhs.rewriter.config;
 
 import com.xhs.rewriter.domain.Note;
 import com.xhs.rewriter.domain.UserAccount;
-import com.xhs.rewriter.repository.NoteRepository;
-import com.xhs.rewriter.repository.UserAccountRepository;
+import com.xhs.rewriter.mapper.NoteMapper;
+import com.xhs.rewriter.mapper.UserAccountMapper;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
@@ -11,27 +11,28 @@ import org.springframework.stereotype.Component;
 @Component
 public class DataInitializer implements CommandLineRunner {
     private static final java.time.format.DateTimeFormatter DATE_TIME_FORMATTER = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
-    private final UserAccountRepository userRepository;
-    private final NoteRepository noteRepository;
+    private final UserAccountMapper userMapper;
+    private final NoteMapper noteMapper;
     private final PasswordEncoder passwordEncoder;
 
-    public DataInitializer(UserAccountRepository userRepository, NoteRepository noteRepository, PasswordEncoder passwordEncoder) {
-        this.userRepository = userRepository;
-        this.noteRepository = noteRepository;
+    public DataInitializer(UserAccountMapper userMapper, NoteMapper noteMapper, PasswordEncoder passwordEncoder) {
+        this.userMapper = userMapper;
+        this.noteMapper = noteMapper;
         this.passwordEncoder = passwordEncoder;
     }
 
     @Override
     public void run(String... args) {
-        if (!userRepository.existsByUsername("admin")) {
+        if (userMapper.countByUsername("admin") == 0) {
             UserAccount admin = new UserAccount();
             admin.setUsername("admin");
             admin.setDisplayName("内容运营");
             admin.setPassword(passwordEncoder.encode("admin123"));
-            userRepository.save(admin);
+            admin.setCreatedAt(java.time.LocalDateTime.now());
+            userMapper.insert(admin);
         }
 
-        if (noteRepository.count() == 0) {
+        if (noteMapper.countAll() == 0) {
             Note note = new Note();
             note.setTitle("夏天通勤也能清爽不脱妆");
             note.setNoteUrl("https://www.xiaohongshu.com/explore/65f1a2b3c4d5e6f7a8b9c0d1");
@@ -47,7 +48,9 @@ public class DataInitializer implements CommandLineRunner {
             note.setLastUpdateTime(java.time.LocalDateTime.now().minusDays(1).format(DATE_TIME_FORMATTER));
             note.setTagsJson("[\"#美妆\",\"#通勤妆\",\"#底妆\"]");
             note.setImageUrlsJson("[]");
-            noteRepository.save(note);
+            note.setCreatedAt(java.time.LocalDateTime.now());
+            note.setUpdatedAt(java.time.LocalDateTime.now());
+            noteMapper.insert(note);
         }
     }
 }

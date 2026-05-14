@@ -71,22 +71,65 @@ public class AiRewriteService {
     public String rewrite(Note note, RewriteRequest request) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("source", buildSource(note));
-        data.put("titleRewrite", runTask(note, request.getTitlePrompt(), fallbackTitleRewrite(note)));
-        data.put("contentRewrite", runTask(note, request.getContentPrompt(), fallbackContentRewrite(note)));
-        data.put("sentimentAnalysis", runTask(note, request.getSentimentPrompt(), fallbackSentimentAnalysis(note)));
-        data.put("copyAnalysis", runTask(note, request.getCopyPrompt(), fallbackCopyAnalysis(note)));
+        data.put("titleRewrite", runTask(note, request.getTitlePrompt(), "笔记标题 AI 重写"));
+        data.put("contentRewrite", runTask(note, request.getContentPrompt(), "笔记内容 AI 重写"));
+        data.put("sentimentAnalysis", runTask(note, request.getSentimentPrompt(), "笔记情感分析"));
+        data.put("copyAnalysis", runTask(note, request.getCopyPrompt(), "笔记文案分析"));
         return toJson(data);
     }
 
-    private String runTask(Note note, String prompt, String fallback) {
-        if (!StringUtils.hasText(deepSeekApiKey) || !StringUtils.hasText(prompt)) {
-            return fallback;
+    public String generateAnalysis(Note note, RewriteRequest request, String existingResultsJson) {
+        Map<String, Object> data = parseResultMap(existingResultsJson);
+        data.put("source", buildSource(note));
+        data.put("sentimentAnalysis", runTask(note, request.getSentimentPrompt(), "笔记情感分析"));
+        data.put("copyAnalysis", runTask(note, request.getCopyPrompt(), "笔记文案分析"));
+        return toJson(data);
+    }
+
+    public String generateRewrite(Note note, RewriteRequest request, String existingResultsJson) {
+        Map<String, Object> data = parseResultMap(existingResultsJson);
+        data.put("source", buildSource(note));
+        data.put("titleRewrite", runTask(note, request.getTitlePrompt(), "笔记标题 AI 重写"));
+        data.put("contentRewrite", runTask(note, request.getContentPrompt(), "笔记内容 AI 重写"));
+        return toJson(data);
+    }
+
+    private Map<String, Object> parseResultMap(String json) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        if (!StringUtils.hasText(json)) {
+            return data;
         }
         try {
-            return callDeepSeek(prompt, note);
-        } catch (RuntimeException ex) {
-            return fallback + "\n\n（DeepSeek 调用失败，当前展示本地格式化结果。）";
+            JsonNode root = objectMapper.readTree(json);
+            if (root.isObject()) {
+                root.fields().forEachRemaining(entry -> {
+                    JsonNode value = entry.getValue();
+                    data.put(entry.getKey(), value.isTextual() ? value.asText() : objectMapper.convertValue(value, Object.class));
+                });
+            }
+        } catch (Exception ignored) {
+            // Old malformed AI result JSON should not block generating fresh partial results.
         }
+        return data;
+    }
+
+    private String runTask(Note note, String prompt, String taskName) {
+        if (!StringUtils.hasText(deepSeekApiKey)) {
+            throw new IllegalStateException("DeepSeek API Key 未配置，无法生成" + taskName);
+        }
+        if (!StringUtils.hasText(prompt)) {
+            throw new IllegalStateException(taskName + "的提示词为空，无法调用 DeepSeek");
+        }
+        String result;
+        try {
+            result = callDeepSeek(prompt, note);
+        } catch (RuntimeException ex) {
+            throw new IllegalStateException("DeepSeek 调用失败：" + ex.getMessage(), ex);
+        }
+        if (!StringUtils.hasText(result)) {
+            throw new IllegalStateException("DeepSeek 未返回" + taskName + "内容");
+        }
+        return result;
     }
 
     private String callDeepSeek(String prompt, Note note) {
@@ -150,68 +193,6 @@ public class AiRewriteService {
                 + "【视频配图或截图】" + String.join(", ", parseJsonArray(note.getImageUrlsJson()));
     }
 
-    private String fallbackTitleRewrite(Note note) {
-        String keyword = firstKeyword(note);
-        return "1. " + keyword + "救星✨💄\n"
-                + "2. 通勤不脱妆🌿✨\n"
-                + "3. 底妆稳一天💫🪞";
-    }
-
-    private String fallbackContentRewrite(Note note) {
-        return "早八通勤也想拥有干净底妆？这套方法我真的会反复用✨\n\n"
-                + "我这次重点调整了三个步骤：妆前先控油、粉底薄涂、鼻翼和下巴少量多次定妆。看起来很简单，但对混油皮真的很友好。\n\n"
-                + "🔍重点总结\n"
-                + "1. 妆前别贪多，控油区域精准一点。\n"
-                + "2. 粉底薄涂更自然，后续也不容易斑驳。\n"
-                + "3. 中午用纸巾按压，比反复补粉更干净。\n\n"
-                + "你们通勤最怕底妆哪里先崩？鼻翼、下巴还是额头？\n\n"
-                + "#通勤妆 #底妆 #混油皮 #不脱妆 #小红书美妆";
-    }
-
-    private String fallbackSentimentAnalysis(Note note) {
-        return "【主要情感】：积极\n"
-                + "【情感强度】：4分\n"
-                + "【情感关键词】：\n"
-                + "- 适合：积极\n"
-                + "- 完整：积极\n"
-                + "- 清爽：积极\n"
-                + "【情感句段分析】：\n"
-                + "1. \"" + firstSentence(note) + "\"：表达了对使用效果的认可，整体偏正向。\n"
-                + "2. \"重点是妆前控油、薄涂粉底、局部定妆\"：呈现解决问题的方法，带有实用和确定感。\n"
-                + "3. \"可以先从这套步骤试试看\"：语气温和，传递分享和建议的情绪。\n"
-                + "【情感变化】：从问题场景进入解决方案，最后转为经验分享。\n"
-                + "【整体评估】：\n"
-                + "- 情感基调：真实、轻松、偏积极。\n"
-                + "- 心理状态推测：作者希望帮助同类肤质用户降低试错成本。\n"
-                + "- 建议（如适用）：可增加更具体的前后对比，增强可信度。\n"
-                + "【情感词云】：适合、完整、清爽、真实、友好、有效";
-    }
-
-    private String fallbackCopyAnalysis(Note note) {
-        int length = safe(note.getOriginalContent()).length();
-        return "# 小红书文案分析 ✨\n"
-                + "## 📌 内容评估\n"
-                + "这篇内容聚焦通勤底妆场景，主题明确，目标受众是关注持妆、控油和自然妆感的年轻女性，实用价值较强。\n"
-                + "## 🔍 表达风格\n"
-                + "语言偏真实分享，口语化程度较高，能建立亲近感，但情绪记忆点和互动表达还可以继续加强。\n"
-                + "## 📊 结构分析\n"
-                + "- 标题：⭐⭐⭐⭐ [主题清楚，但爆点略弱]\n"
-                + "- 段落：结构较顺，建议增加步骤编号。\n"
-                + "- 排版：可增加 emoji 和小标题提升扫读效率。\n"
-                + "- 字数：约" + length + "字\n"
-                + "## 🔄 互动潜力\n"
-                + "内容具备收藏价值，若增加评论提问和对比细节，传播潜力会更强。\n"
-                + "## ✅ 优点\n"
-                + "1. 场景具体，用户代入感强。\n"
-                + "2. 方法可执行，适合收藏。\n"
-                + "3. 表达真实，不夸张。\n"
-                + "## 🚀 建议\n"
-                + "1. 标题加入痛点或结果承诺。\n"
-                + "2. 结尾增加互动问题。\n"
-                + "## 💯 总评：82/100\n"
-                + "整体是适合继续打磨成小红书实用型内容的优质素材。";
-    }
-
     private List<String> parseTags(String json) {
         List<String> values = parseJsonArray(json);
         List<String> tags = new ArrayList<>();
@@ -251,24 +232,6 @@ public class AiRewriteService {
         if (safeTitle.contains("!") || safeTitle.contains("？") || safeTitle.contains("?")) score += 8;
         if (safeTitle.contains("亲测") || safeTitle.contains("避坑") || safeTitle.contains("收藏")) score += 12;
         return Math.min(100, score);
-    }
-
-    private String firstKeyword(Note note) {
-        List<String> tags = parseTags(note.getTagsJson());
-        if (!tags.isEmpty()) {
-            return tags.get(0).replace("#", "");
-        }
-        String title = safe(note.getTitle());
-        return title.length() > 4 ? title.substring(0, 4) : "笔记";
-    }
-
-    private String firstSentence(Note note) {
-        String content = safe(note.getOriginalContent()).trim();
-        if (content.isEmpty()) {
-            return safe(note.getTitle());
-        }
-        String[] parts = content.split("[。！？!?\\n]+");
-        return parts.length == 0 ? content : parts[0];
     }
 
     private String blankAsNone(String value) {

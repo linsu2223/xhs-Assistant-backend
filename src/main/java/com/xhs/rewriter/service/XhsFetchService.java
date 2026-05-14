@@ -52,11 +52,62 @@ public class XhsFetchService {
         return note;
     }
 
+    public MediaPayload fetchMedia(String rawUrl, String cookie) {
+        if (!StringUtils.hasText(cookie)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请先配置小红书Cookie");
+        }
+        String mediaUrl = normalizeMediaUrl(rawUrl);
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(HttpHeaders.COOKIE, cookie.trim());
+        headers.set(HttpHeaders.USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36");
+        headers.set(HttpHeaders.REFERER, "https://www.xiaohongshu.com/");
+        headers.set(HttpHeaders.ACCEPT, "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8");
+
+        try {
+            ResponseEntity<byte[]> response = restTemplate.exchange(mediaUrl, HttpMethod.GET, new HttpEntity<>(headers), byte[].class);
+            byte[] body = response.getBody();
+            if (!response.getStatusCode().is2xxSuccessful() || body == null || body.length == 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "图片资源未返回有效内容");
+            }
+            MediaType contentType = response.getHeaders().getContentType();
+            if (contentType == null || !StringUtils.hasText(contentType.toString())) {
+                contentType = MediaType.APPLICATION_OCTET_STREAM;
+            }
+            return new MediaPayload(body, contentType);
+        } catch (ResponseStatusException ex) {
+            throw ex;
+        } catch (RuntimeException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "图片加载失败，可能是Cookie失效或图片地址已过期");
+        }
+    }
+
     private String normalizeUrl(String url) {
         if (!StringUtils.hasText(url) || !URL_PATTERN.matcher(url.trim()).matches()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请输入正确的小红书笔记链接");
         }
         return url.trim();
+    }
+
+    private String normalizeMediaUrl(String url) {
+        if (!StringUtils.hasText(url)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "图片地址不能为空");
+        }
+        String value = url.trim().replace("\\/", "/");
+        if (value.startsWith("//")) {
+            value = "https:" + value;
+        }
+        if (!looksLikeUrl(value)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "图片地址格式不正确");
+        }
+        String lower = value.toLowerCase();
+        if (!(lower.contains("xiaohongshu.com")
+                || lower.contains("xhscdn.com")
+                || lower.contains("sns-webpic")
+                || lower.contains("sns-img")
+                || lower.contains("sns-video"))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "仅支持代理小红书相关图片资源");
+        }
+        return value;
     }
 
     private String fetchHtml(String url, String cookie) {
@@ -690,5 +741,23 @@ public class XhsFetchService {
         private Integer commentCount;
         private final List<String> topics = new ArrayList<>();
         private final List<String> images = new ArrayList<>();
+    }
+
+    public static class MediaPayload {
+        private final byte[] body;
+        private final MediaType contentType;
+
+        public MediaPayload(byte[] body, MediaType contentType) {
+            this.body = body;
+            this.contentType = contentType;
+        }
+
+        public byte[] getBody() {
+            return body;
+        }
+
+        public MediaType getContentType() {
+            return contentType;
+        }
     }
 }

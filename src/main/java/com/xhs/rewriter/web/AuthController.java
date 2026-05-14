@@ -1,7 +1,7 @@
 package com.xhs.rewriter.web;
 
 import com.xhs.rewriter.domain.UserAccount;
-import com.xhs.rewriter.repository.UserAccountRepository;
+import com.xhs.rewriter.mapper.UserAccountMapper;
 import com.xhs.rewriter.security.JwtService;
 import com.xhs.rewriter.web.dto.LoginRequest;
 import com.xhs.rewriter.web.dto.LoginResponse;
@@ -24,20 +24,22 @@ public class AuthController {
     private static final Pattern PASSWORD_PATTERN = Pattern.compile("^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).{8,20}$");
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
-    private final UserAccountRepository userRepository;
+    private final UserAccountMapper userMapper;
     private final PasswordEncoder passwordEncoder;
 
-    public AuthController(AuthenticationManager authenticationManager, JwtService jwtService, UserAccountRepository userRepository, PasswordEncoder passwordEncoder) {
+    public AuthController(AuthenticationManager authenticationManager, JwtService jwtService, UserAccountMapper userMapper, PasswordEncoder passwordEncoder) {
         this.authenticationManager = authenticationManager;
         this.jwtService = jwtService;
-        this.userRepository = userRepository;
+        this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
     }
 
     @PostMapping("/login")
     public LoginResponse login(@RequestBody LoginRequest request) {
-        UserAccount account = userRepository.findByUsername(request.getUsername())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "账号或密码错误"));
+        UserAccount account = userMapper.findByUsername(request.getUsername());
+        if (account == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "账号或密码错误");
+        }
         if (account.getLockedUntil() != null && account.getLockedUntil().isAfter(LocalDateTime.now())) {
             throw new ResponseStatusException(HttpStatus.LOCKED, "连续登录失败，账号已锁定15分钟");
         }
@@ -45,7 +47,7 @@ public class AuthController {
             authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword()));
             account.setFailedLoginCount(0);
             account.setLockedUntil(null);
-            userRepository.save(account);
+            userMapper.update(account);
             return new LoginResponse(jwtService.createToken(request.getUsername()), request.getUsername());
         } catch (RuntimeException ex) {
             int failed = account.getFailedLoginCount() == null ? 1 : account.getFailedLoginCount() + 1;
@@ -53,7 +55,7 @@ public class AuthController {
             if (failed >= 5) {
                 account.setLockedUntil(LocalDateTime.now().plusMinutes(15));
             }
-            userRepository.save(account);
+            userMapper.update(account);
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "账号或密码错误");
         }
     }
@@ -67,7 +69,7 @@ public class AuthController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "密码需8-20位，含大小写字母和数字");
         }
         String account = request.getAccount().trim();
-        if (userRepository.existsByUsername(account)) {
+        if (userMapper.countByUsername(account) > 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "账号已存在");
         }
         UserAccount user = new UserAccount();
@@ -79,7 +81,7 @@ public class AuthController {
         } else {
             user.setPhone(account);
         }
-        userRepository.save(user);
+        userMapper.insert(user);
         return new LoginResponse(jwtService.createToken(account), account);
     }
 

@@ -2,8 +2,8 @@ package com.xhs.rewriter.web;
 
 import com.xhs.rewriter.domain.Note;
 import com.xhs.rewriter.domain.UserAccount;
-import com.xhs.rewriter.repository.NoteRepository;
-import com.xhs.rewriter.repository.UserAccountRepository;
+import com.xhs.rewriter.mapper.NoteMapper;
+import com.xhs.rewriter.mapper.UserAccountMapper;
 import com.xhs.rewriter.service.AiRewriteService;
 import com.xhs.rewriter.service.CookieCryptoService;
 import com.xhs.rewriter.service.XhsFetchService;
@@ -11,6 +11,7 @@ import com.xhs.rewriter.web.dto.FetchNoteRequest;
 import com.xhs.rewriter.web.dto.NoteRequest;
 import com.xhs.rewriter.web.dto.RewriteRequest;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
@@ -23,21 +24,21 @@ import java.time.format.DateTimeFormatter;
 @RequestMapping("/api/notes")
 public class NoteController {
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
-    private final NoteRepository noteRepository;
-    private final UserAccountRepository userRepository;
+    private final NoteMapper noteMapper;
+    private final UserAccountMapper userMapper;
     private final AiRewriteService aiRewriteService;
     private final XhsFetchService xhsFetchService;
     private final CookieCryptoService cookieCryptoService;
 
     public NoteController(
-            NoteRepository noteRepository,
-            UserAccountRepository userRepository,
+            NoteMapper noteMapper,
+            UserAccountMapper userMapper,
             AiRewriteService aiRewriteService,
             XhsFetchService xhsFetchService,
             CookieCryptoService cookieCryptoService
     ) {
-        this.noteRepository = noteRepository;
-        this.userRepository = userRepository;
+        this.noteMapper = noteMapper;
+        this.userMapper = userMapper;
         this.aiRewriteService = aiRewriteService;
         this.xhsFetchService = xhsFetchService;
         this.cookieCryptoService = cookieCryptoService;
@@ -45,7 +46,7 @@ public class NoteController {
 
     @GetMapping
     public List<Note> list() {
-        return noteRepository.findTop30ByOrderByUpdatedAtDesc();
+        return noteMapper.findTop30ByUpdatedAtDesc();
     }
 
     @PostMapping
@@ -62,7 +63,10 @@ public class NoteController {
         note.setLastUpdateTime(note.getFetchedAt());
         note.setImageUrlsJson("[]");
         note.setTagsJson("[]");
-        return noteRepository.save(note);
+        note.setCreatedAt(LocalDateTime.now());
+        note.setUpdatedAt(LocalDateTime.now());
+        noteMapper.insert(note);
+        return note;
     }
 
     @PostMapping("/fetch")
@@ -71,14 +75,30 @@ public class NoteController {
         String encrypted = user.getEncryptedCookie();
         String cookie = encrypted == null ? "" : cookieCryptoService.decrypt(encrypted);
         Note note = xhsFetchService.fetchByUrl(request.getUrl(), cookie);
-        return noteRepository.save(note);
+        note.setCreatedAt(LocalDateTime.now());
+        note.setUpdatedAt(LocalDateTime.now());
+        noteMapper.insert(note);
+        return note;
+    }
+
+    @GetMapping("/media")
+    public ResponseEntity<byte[]> media(@RequestParam String url, Authentication authentication) {
+        UserAccount user = currentUser(authentication);
+        String encrypted = user.getEncryptedCookie();
+        String cookie = encrypted == null ? "" : cookieCryptoService.decrypt(encrypted);
+        XhsFetchService.MediaPayload media = xhsFetchService.fetchMedia(url, cookie);
+        return ResponseEntity.ok()
+                .contentType(media.getContentType())
+                .body(media.getBody());
     }
 
     @PostMapping("/{id}/analyze")
     public Note analyze(@PathVariable Long id) {
         Note note = getNote(id);
         note.setAnalysisJson(aiRewriteService.analyze(note));
-        return noteRepository.save(note);
+        note.setUpdatedAt(LocalDateTime.now());
+        noteMapper.update(note);
+        return note;
     }
 
     @PostMapping("/{id}/rewrite")
@@ -87,29 +107,61 @@ public class NoteController {
         if (note.getAnalysisJson() == null || note.getAnalysisJson().trim().isEmpty()) {
             note.setAnalysisJson(aiRewriteService.analyze(note));
         }
-        note.setRewriteResultsJson(aiRewriteService.rewrite(note, request));
-        return noteRepository.save(note);
+        note.setRewriteResultsJson(callAi(() -> aiRewriteService.rewrite(note, request)));
+        note.setUpdatedAt(LocalDateTime.now());
+        noteMapper.update(note);
+        return note;
+    }
+
+    @PostMapping("/{id}/ai-analysis")
+    public Note generateAiAnalysis(@PathVariable Long id, @RequestBody RewriteRequest request) {
+        Note note = getNote(id);
+        if (note.getAnalysisJson() == null || note.getAnalysisJson().trim().isEmpty()) {
+            note.setAnalysisJson(aiRewriteService.analyze(note));
+        }
+        note.setRewriteResultsJson(callAi(() -> aiRewriteService.generateAnalysis(note, request, note.getRewriteResultsJson())));
+        note.setUpdatedAt(LocalDateTime.now());
+        noteMapper.update(note);
+        return note;
+    }
+
+    @PostMapping("/{id}/ai-rewrite")
+    public Note generateAiRewrite(@PathVariable Long id, @RequestBody RewriteRequest request) {
+        Note note = getNote(id);
+        if (note.getAnalysisJson() == null || note.getAnalysisJson().trim().isEmpty()) {
+            note.setAnalysisJson(aiRewriteService.analyze(note));
+        }
+        note.setRewriteResultsJson(callAi(() -> aiRewriteService.generateRewrite(note, request, note.getRewriteResultsJson())));
+        note.setUpdatedAt(LocalDateTime.now());
+        noteMapper.update(note);
+        return note;
     }
 
     @GetMapping("/history")
     public List<Note> history() {
-        return noteRepository.findTop30ByOrderByUpdatedAtDesc();
+        return noteMapper.findTop30ByUpdatedAtDesc();
     }
 
     @DeleteMapping("/{id}")
     public void delete(@PathVariable Long id) {
-        noteRepository.deleteById(id);
+        noteMapper.deleteById(id);
     }
 
     private Note getNote(Long id) {
-        return noteRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "笔记不存在"));
+        Note note = noteMapper.findById(id);
+        if (note == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "笔记不存在");
+        }
+        return note;
     }
 
     private UserAccount currentUser(Authentication authentication) {
         String username = authentication == null ? "" : authentication.getName();
-        return userRepository.findByUsername(username)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "请先登录"));
+        UserAccount user = userMapper.findByUsername(username);
+        if (user == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "请先登录");
+        }
+        return user;
     }
 
     private String requireText(String value, String message) {
@@ -117,5 +169,18 @@ public class NoteController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
         }
         return value.trim();
+    }
+
+    private String callAi(AiOperation operation) {
+        try {
+            return operation.run();
+        } catch (IllegalStateException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, ex.getMessage(), ex);
+        }
+    }
+
+    @FunctionalInterface
+    private interface AiOperation {
+        String run();
     }
 }

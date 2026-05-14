@@ -1,7 +1,7 @@
 package com.xhs.rewriter.web;
 
 import com.xhs.rewriter.domain.UserAccount;
-import com.xhs.rewriter.repository.UserAccountRepository;
+import com.xhs.rewriter.mapper.UserAccountMapper;
 import com.xhs.rewriter.service.CookieCryptoService;
 import com.xhs.rewriter.web.dto.CookieRequest;
 import com.xhs.rewriter.web.dto.ProfileRequest;
@@ -17,11 +17,11 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/user")
 public class UserController {
-    private final UserAccountRepository userRepository;
+    private final UserAccountMapper userMapper;
     private final CookieCryptoService cookieCryptoService;
 
-    public UserController(UserAccountRepository userRepository, CookieCryptoService cookieCryptoService) {
-        this.userRepository = userRepository;
+    public UserController(UserAccountMapper userMapper, CookieCryptoService cookieCryptoService) {
+        this.userMapper = userMapper;
         this.cookieCryptoService = cookieCryptoService;
     }
 
@@ -48,7 +48,7 @@ public class UserController {
         user.setPhone(request.getPhone());
         user.setEmail(request.getEmail());
         user.setAvatarUrl(request.getAvatarUrl());
-        userRepository.save(user);
+        userMapper.update(user);
         return profile(authentication);
     }
 
@@ -61,7 +61,7 @@ public class UserController {
         user.setEncryptedCookie(cookieCryptoService.encrypt(request.getCookie().trim()));
         user.setCookieStatus("有效");
         user.setCookieUpdatedAt(LocalDateTime.now());
-        userRepository.save(user);
+        userMapper.update(user);
 
         Map<String, String> data = new LinkedHashMap<>();
         data.put("status", "有效");
@@ -86,12 +86,15 @@ public class UserController {
         user.setEncryptedCookie(null);
         user.setCookieStatus("未配置");
         user.setCookieUpdatedAt(null);
-        userRepository.save(user);
+        userMapper.update(user);
     }
 
     private UserAccount currentUser(Authentication authentication) {
         String username = authentication == null ? "" : authentication.getName();
-        return userRepository.findByUsername(username)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "请先登录"));
+        UserAccount user = userMapper.findByUsername(username);
+        if (user == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "请先登录");
+        }
+        return user;
     }
 }
